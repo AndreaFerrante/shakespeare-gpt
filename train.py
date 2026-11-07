@@ -42,14 +42,8 @@ def get_text_matrix(sequence: np.array, len_input: int) -> np.array:
         sequence (np.array): array to be processed
         len_input (int): length od model input
     """
-    # create empty matrix
-    X = np.empty((len(sequence)-len_input, len_input))
-
-    # fill each row/time window from input sequence
-    for i in range(X.shape[0]):
-        X[i,:] = sequence[i : i+len_input]
-
-    return X
+    # zero-copy read-only view: row i is sequence[i : i+len_input]
+    return np.lib.stride_tricks.sliding_window_view(sequence, len_input)
 
 
 def process_corpus() -> (np.array, dict):
@@ -116,15 +110,15 @@ def main():
     for epoch in range(config.N_EPOCHS):
         start = time.time()
 
-        # Reshuffle data at each epoch to randomize mini-batch composition
-        reshuffle = np.random.choice(X.shape[0], X.shape[0], replace=False)
-        X = X[reshuffle]
+        # Reshuffle indexes at each epoch (X is a view: shuffling it would copy it all)
+        order = np.random.permutation(X.shape[0])
 
         for iteration in range(X.shape[0] // config.BATCH_SIZE):
             # take new minibatch (with 1 char shift from x to y)
             take = iteration * config.BATCH_SIZE
-            x = X[take:take + config.BATCH_SIZE, :-1]  # chars [0:128]
-            y = X[take:take + config.BATCH_SIZE, 1:]  # chars [1:129]
+            batch = X[order[take:take + config.BATCH_SIZE]]
+            x = batch[:, :-1]  # chars [0:128]
+            y = batch[:, 1:]  # chars [1:129]
 
             # training step
             current_loss = train_on_batch(gpt, optimizer, x, y)
